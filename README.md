@@ -94,6 +94,33 @@ docker run -d --rm \
   fastflowlm serve
 ```
 
+## Benchmarks
+
+Measured on an **AMD Ryzen AI 9 HX 370** (Strix Point) with 32GB LPDDR5x,
+Ubuntu 24.04, kernel 6.17, FLM v0.9.35, power mode: `performance`.
+
+Prompt: *"Explain quantum computing in 200 words."*
+
+| Model | Params | TTFT | Prefill | Decode | Tokens |
+|---|---|---|---|---|---|
+| Qwen3 0.6B | 0.6B | 535 ms | 52.4 tok/s | **88.7 tok/s** | 161 |
+| LFM2 1.2B | 1.2B | 363 ms | 49.6 tok/s | **62.9 tok/s** | 240 |
+| Llama 3.2 1B | 1B | 460 ms | 95.9 tok/s | **60.1 tok/s** | 271 |
+| Qwen3 1.7B | 1.7B | 640 ms | 37.5 tok/s | **40.4 tok/s** | 434 |
+| Gemma3 1B | 1B | 550 ms | 34.6 tok/s | **37.9 tok/s** | 201 |
+| Llama 3.2 3B | 3B | 957 ms | 46.0 tok/s | **24.4 tok/s** | 294 |
+| Phi-4 Mini 4B | 4B | 926 ms | 11.9 tok/s | **20.0 tok/s** | 935 |
+| Qwen3 4B | 4B | 1040 ms | 23.1 tok/s | **18.7 tok/s** | 551 |
+
+- **TTFT** = Time To First Token (lower is better)
+- **Prefill** = prompt processing speed
+- **Decode** = token generation speed (the number you feel when chatting)
+- **Tokens** = total tokens generated in the response
+
+All inference runs entirely on the NPU — zero GPU or CPU compute for the
+model forward pass. The Qwen3 0.6B and Llama 3.2 1B models are the sweet
+spot for interactive use, delivering 60-89 tokens/s decode speed.
+
 ## Available models
 
 As of FLM v0.9.35, these models run on the NPU:
