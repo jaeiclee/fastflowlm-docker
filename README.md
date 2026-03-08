@@ -10,6 +10,8 @@
 Run large language models on your AMD Ryzen AI NPU under Linux, using
 [FastFlowLM](https://github.com/FastFlowLM/FastFlowLM) inside Docker.
 
+![Demo — Llama 3.2 1B running on AMD Ryzen AI NPU at ~60 tokens/s](demo.gif)
+
 ## What this is
 
 As of March 2026, running LLMs on AMD's XDNA2 NPU under Linux is not
