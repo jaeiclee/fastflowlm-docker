@@ -45,8 +45,12 @@ Any AMD processor with an XDNA/XDNA2 NPU, including:
 
 ### Quick host setup (Ubuntu 24.04)
 
+The container builds XRT from source internally, so you only need the
+host-side kernel driver and firmware:
+
 ```bash
-# Install XRT and NPU userspace (if not already)
+# Install the amdxdna kernel driver (from AMD's xdna-driver repo or PPA)
+# See https://github.com/amd/xdna-driver for full instructions
 sudo add-apt-repository ppa:amd-team/xrt
 sudo apt update && sudo apt install libxrt-npu2
 
@@ -54,6 +58,10 @@ sudo apt update && sudo apt install libxrt-npu2
 echo -e "* soft memlock unlimited\n* hard memlock unlimited" | sudo tee -a /etc/security/limits.conf
 sudo reboot
 ```
+
+> **Note**: If the PPA's XRT doesn't work with your kernel (e.g. kernel 6.17+),
+> you may need to build the [xdna-driver](https://github.com/amd/xdna-driver)
+> from source on the host. See [Troubleshooting](#troubleshooting) below.
 
 ## Build the Docker image
 
@@ -63,8 +71,8 @@ cd fastflowlm-docker
 docker build -t fastflowlm .
 ```
 
-The build takes ~5-10 minutes (Rust compilation + FLM C++ build).
-The resulting image is ~484MB (multi-stage build, runtime-only).
+The build takes ~15-25 minutes (XRT source build + Rust compilation + FLM C++ build).
+The resulting image is ~440MB (3-stage build, runtime-only).
 
 ## Usage
 
@@ -144,10 +152,12 @@ Run `flm list` for the complete list.
 
 ## How it works
 
-The Dockerfile:
-1. **Build stage**: Installs all build dependencies (cmake, ninja, Rust, Boost,
-   FFmpeg, FFTW3, XRT headers), clones FastFlowLM, and compiles from source
-2. **Runtime stage**: Copies only the built binary, NPU kernel libraries (`.so`),
+The Dockerfile uses a 3-stage build:
+1. **XRT builder**: Builds XRT base and NPU plugin from the
+   [xdna-driver](https://github.com/amd/xdna-driver) source (no PPA dependency)
+2. **FLM builder**: Installs build dependencies (cmake, ninja, Rust, Boost,
+   FFmpeg, FFTW3), clones FastFlowLM, and compiles against the source-built XRT
+3. **Runtime stage**: Copies only the built binary, NPU kernel libraries (`.so`),
    and xclbin files into a minimal Ubuntu image with runtime dependencies
 
 The container accesses the NPU via `--device=/dev/accel/accel0`. The host
@@ -165,22 +175,11 @@ or run the container with `--group-add render`.
 **Low memlock limit**: The NPU needs a high memlock limit. Pass `--ulimit memlock=-1:-1`
 to Docker, or set unlimited memlock in `/etc/security/limits.conf` on the host and reboot.
 
-**XRT version mismatch with kernel 6.17+**: The PPA's XRT (2.20.0) may not work with
-newer kernels. If you see DKMS errors or `amdxdna` fails to load, you may need to
-build XRT 2.23.0+ from source — see the
-[xdna-driver repo](https://github.com/amd/xdna-driver). In that case, mount the
-host-built XRT into the container instead:
-
-```bash
-docker run -it --rm \
-  --device=/dev/accel/accel0 \
-  --ulimit memlock=-1:-1 \
-  -v /opt/xilinx/xrt:/opt/xilinx/xrt:ro \
-  -v /usr/lib/firmware/amdnpu:/usr/lib/firmware/amdnpu:ro \
-  -e XRT_ALLOW_0_VER=1 \
-  -v ~/.config/flm:/root/.config/flm \
-  fastflowlm run llama3.2:1b
-```
+**XRT version mismatch on the host**: The PPA's XRT (2.20.0) may not work with
+newer kernels (6.17+). If `amdxdna` fails to load, build the
+[xdna-driver](https://github.com/amd/xdna-driver) from source on the host.
+Note: the Docker image already builds XRT from source internally, so this only
+affects the host-side kernel driver.
 
 **NPU4 / AIE2P firmware (e.g. Ryzen AI 7 PRO 360)**: Kernel 6.17 may require
 protocol-specific firmware under `/usr/lib/firmware/amdnpu/17f0_10/`. If `flm validate`
@@ -191,8 +190,7 @@ walkthrough.
 ## Credits
 
 - [FastFlowLM](https://github.com/FastFlowLM/FastFlowLM) — the NPU LLM runtime
-- [AMD XDNA Driver](https://github.com/amd/xdna-driver) — Linux NPU driver
-- [AMD XRT](https://launchpad.net/~amd-team/+archive/ubuntu/xrt) — Xilinx Runtime
+- [AMD XDNA Driver](https://github.com/amd/xdna-driver) — Linux NPU driver and XRT
 
 ## License
 
