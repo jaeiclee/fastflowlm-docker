@@ -1,13 +1,13 @@
 # =============================================================================
 # FastFlowLM on AMD Ryzen AI NPU — Ubuntu 24.04
 # =============================================================================
-# Runs LLMs on the AMD XDNA2 NPU (Strix Point, Kraken Point, etc.) on Linux.
+# Runs LLMs on the AMD XDNA/XDNA2 NPU (Strix Point, Kraken Point, etc.) on Linux.
 #
 # Prerequisites (on the HOST, not in the container):
 #   - AMD Ryzen AI processor with NPU (Strix Point / Kraken Point / etc.)
-#   - Linux kernel 6.11+ with amdxdna driver (in-tree from 7.0, or via amdxdna-dkms)
+#   - Linux kernel 6.11+ with amdxdna driver (in-tree from 6.14+, or via amdxdna-dkms)
 #   - NPU device visible at /dev/accel/accel0
-#   - NPU firmware ≥ 1.1.0.0 (in /lib/firmware/amdnpu/)
+#   - NPU firmware in /lib/firmware/amdnpu/ (or /usr/lib/firmware/amdnpu/)
 #   - Docker with --device passthrough support
 #
 # Build:
@@ -33,13 +33,80 @@
 # =============================================================================
 
 # ---------------------
-# Stage 1: Build
+# Stage 1: Build XRT from source
 # ---------------------
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:24.04 AS xrt-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Build dependencies
+# XRT build dependencies (from xdna-driver's xrtdeps.sh, trimmed for Docker)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    curl \
+    file \
+    git \
+    ca-certificates \
+    pkg-config \
+    jq \
+    wget \
+    libboost-dev \
+    libboost-filesystem-dev \
+    libboost-program-options-dev \
+    libcurl4-openssl-dev \
+    libdrm-dev \
+    libdw-dev \
+    libelf-dev \
+    libffi-dev \
+    libgtest-dev \
+    libjson-glib-dev \
+    libncurses5-dev \
+    libprotoc-dev \
+    libssl-dev \
+    libsystemd-dev \
+    libudev-dev \
+    libyaml-dev \
+    lsb-release \
+    ocl-icd-dev \
+    ocl-icd-opencl-dev \
+    opencl-headers \
+    pciutils \
+    protobuf-compiler \
+    python3 \
+    libpython3-dev \
+    python3-pybind11 \
+    pybind11-dev \
+    rapidjson-dev \
+    systemtap-sdt-dev \
+    uuid-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone xdna-driver (includes XRT as submodule)
+WORKDIR /build
+RUN git clone --recurse-submodules https://github.com/amd/xdna-driver.git
+
+# Build XRT base (headers + libs)
+WORKDIR /build/xdna-driver/xrt/build
+RUN ./build.sh -npu -opt
+
+# Install XRT base .deb
+RUN apt-get update && apt install -y ./Release/xrt_*.deb && rm -rf /var/lib/apt/lists/*
+
+# Build XRT NPU plugin
+WORKDIR /build/xdna-driver/build
+RUN ./build.sh -release -nokmod
+
+# Install XRT plugin .deb
+RUN apt install -y ./Release/xrt_plugin*.deb
+
+# ---------------------
+# Stage 2: Build FastFlowLM
+# ---------------------
+FROM ubuntu:24.04 AS flm-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# FastFlowLM build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -65,30 +132,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# XRT headers + libs (needed at build time for xrt_bo.h, xrt_kernel.h etc.)
-# Install from AMD's PPA (provides XRT 2.21+)
-RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common \
-    && add-apt-repository -y ppa:amd-team/xrt \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends libxrt-dev libxrt-npu2 \
-    && rm -rf /var/lib/apt/lists/*
+# Copy XRT installation from xrt-builder
+COPY --from=xrt-builder /opt/xilinx/xrt /opt/xilinx/xrt
 
 # Clone FastFlowLM
 WORKDIR /build
 RUN git clone --recurse-submodules https://github.com/FastFlowLM/FastFlowLM.git
 
-# Build (override XRT paths — PPA installs to /usr, not /opt/xilinx/xrt)
+# Build (point at XRT from source build)
 WORKDIR /build/FastFlowLM/src
 RUN cmake --preset linux-default \
-      -DXRT_INCLUDE_DIR=/usr/include \
-      -DXRT_LIB_DIR=/usr/lib/x86_64-linux-gnu \
+      -DXRT_INCLUDE_DIR=/opt/xilinx/xrt/include \
+      -DXRT_LIB_DIR=/opt/xilinx/xrt/lib \
     && cmake --build build -j8
 
 # Install to /opt/fastflowlm
 RUN cmake --install build
 
 # ---------------------
-# Stage 2: Runtime
+# Stage 3: Runtime
 # ---------------------
 FROM ubuntu:24.04
 
@@ -97,7 +159,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Runtime dependencies only (no -dev packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    software-properties-common \
     libboost-program-options1.83.0 \
     libcurl4 \
     libfftw3-single3 \
@@ -109,16 +170,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libswscale7 \
     libswresample4 \
     libreadline8t64 \
+    libdrm2 \
     && rm -rf /var/lib/apt/lists/*
 
-# XRT runtime (provides libxrt_coreutil.so.2 for NPU access)
-RUN add-apt-repository -y ppa:amd-team/xrt \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends libxrt-npu2 \
-    && rm -rf /var/lib/apt/lists/*
+# Copy XRT runtime libraries (from source build)
+COPY --from=xrt-builder /opt/xilinx/xrt/lib /opt/xilinx/xrt/lib
+COPY --from=xrt-builder /opt/xilinx/xrt/setup.sh /opt/xilinx/xrt/setup.sh
+
+# Add XRT libs to linker path
+ENV LD_LIBRARY_PATH="/opt/xilinx/xrt/lib:${LD_LIBRARY_PATH}"
 
 # Copy FastFlowLM installation from builder
-COPY --from=builder /opt/fastflowlm /opt/fastflowlm
+COPY --from=flm-builder /opt/fastflowlm /opt/fastflowlm
 
 # Symlink so `flm` is in PATH
 RUN ln -sf /opt/fastflowlm/bin/flm /usr/local/bin/flm
