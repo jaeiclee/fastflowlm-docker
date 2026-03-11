@@ -13,6 +13,10 @@
 # Build:
 #   docker build -t fastflowlm .
 #
+# Build and push to ghcr.io with latest FastFlowLM version:
+#   Simply run: ./build-and-push.sh
+#   (Requires: gh CLI logged in, or set GH_USERNAME env var)
+#
 # Run (interactive chat):
 #   docker run -it --rm \
 #     --device=/dev/accel/accel0 \
@@ -31,6 +35,9 @@
 #
 # (where "..." = --device=/dev/accel/accel0 --ulimit memlock=-1:-1 -v ~/.config/flm:/root/.config/flm)
 # =============================================================================
+
+# Build arguments for FastFlowLM version (defaults to latest, override with --build-arg)
+ARG FLM_VERSION=v0.9.34
 
 # ---------------------
 # Stage 1: Build XRT from source
@@ -135,9 +142,10 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Copy XRT installation from xrt-builder
 COPY --from=xrt-builder /opt/xilinx/xrt /opt/xilinx/xrt
 
-# Clone FastFlowLM
+# Clone FastFlowLM (specific version tag)
+ARG FLM_VERSION=v0.9.34
 WORKDIR /build
-RUN git clone --recurse-submodules https://github.com/FastFlowLM/FastFlowLM.git
+RUN git clone --recurse-submodules --branch ${FLM_VERSION} --depth 1 https://github.com/FastFlowLM/FastFlowLM.git
 
 # Build (point at XRT from source build)
 WORKDIR /build/FastFlowLM/src

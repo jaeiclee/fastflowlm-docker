@@ -74,6 +74,27 @@ docker build -t fastflowlm .
 The build takes ~15-25 minutes (XRT source build + Rust compilation + FLM C++ build).
 The resulting image is ~440MB (3-stage build, runtime-only).
 
+## Push to GitHub Container Registry (ghcr.io)
+
+To push the image to your ghcr.io repository with the FastFlowLM version tag:
+
+```bash
+# Make sure you're logged into ghcr.io
+echo $GITHUB_TOKEN | docker login ghcr.io -u $USERNAME --password-stdin
+
+# Run the build script (auto-detects latest FLM version)
+./build-and-push.sh
+```
+
+The script will:
+1. Fetch the latest FastFlowLM release tag from GitHub API
+2. Build the image with that version
+3. Push two tags: `ghcr.io/USERNAME/fastflowlm:vX.Y.Z` and `ghcr.io/USERNAME/fastflowlm:latest`
+
+**Requirements:** 
+- [`gh`](https://cli.github.com/) CLI logged in, OR set `GH_USERNAME` env variable
+- Docker Buildx enabled (default on Docker Desktop)
+
 ## Usage
 
 ```bash
