@@ -142,10 +142,15 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Copy XRT installation from xrt-builder
 COPY --from=xrt-builder /opt/xilinx/xrt /opt/xilinx/xrt
 
-# Clone FastFlowLM (specific version tag)
+# Clone FastFlowLM (specific version tag or commit hash)
 ARG FLM_VERSION=v0.9.34
 WORKDIR /build
-RUN git clone --recurse-submodules --branch ${FLM_VERSION} --depth 1 https://github.com/FastFlowLM/FastFlowLM.git
+RUN if echo "${FLM_VERSION}" | grep -qE '^[a-f0-9]{7,40}$'; then \
+      git clone --recurse-submodules https://github.com/FastFlowLM/FastFlowLM.git && \
+      cd FastFlowLM && git checkout ${FLM_VERSION}; \
+    else \
+      git clone --recurse-submodules --branch ${FLM_VERSION} --depth 1 https://github.com/FastFlowLM/FastFlowLM.git; \
+    fi
 
 # Build (point at XRT from source build)
 WORKDIR /build/FastFlowLM/src
