@@ -25,11 +25,15 @@ if [ -n "$FLM_GIT_REF" ]; then
     if [ -n "$REF_TYPE" ]; then
         # It's a branch - resolve to commit hash and use that as the tag
         COMMIT_HASH=$(echo "$REF_TYPE" | cut -f1)
-        FLM_VERSION="$COMMIT_HASH"
+        FLM_VERSION="${COMMIT_HASH:0:8}"
         echo "Branch detected: ${FLM_GIT_REF} -> Commit: ${FLM_VERSION}"
     else
-        # It's a tag or commit hash - use as-is
-        FLM_VERSION="$FLM_GIT_REF"
+        # It's a tag or commit hash - use as-is (shorten if it's a full commit hash)
+        if echo "$FLM_GIT_REF" | grep -qE '^[a-f0-9]{40}$'; then
+            FLM_VERSION="${FLM_GIT_REF:0:8}"
+        else
+            FLM_VERSION="$FLM_GIT_REF"
+        fi
         echo "Using specified git reference: ${FLM_VERSION}"
     fi
 else

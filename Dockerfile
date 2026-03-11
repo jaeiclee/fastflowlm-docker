@@ -145,7 +145,7 @@ COPY --from=xrt-builder /opt/xilinx/xrt /opt/xilinx/xrt
 # Clone FastFlowLM (specific version tag or commit hash)
 ARG FLM_VERSION=v0.9.34
 WORKDIR /build
-RUN if echo "${FLM_VERSION}" | grep -qE '^[a-f0-9]{7,40}$'; then \
+RUN if echo "${FLM_VERSION}" | grep -qE '^[a-f0-9]{8}$'; then \
       git clone --recurse-submodules https://github.com/FastFlowLM/FastFlowLM.git && \
       cd FastFlowLM && git checkout ${FLM_VERSION}; \
     else \
