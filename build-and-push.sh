@@ -2,26 +2,26 @@
 set -e
 
 # Parse arguments
-USE_GIT_STATE=false
+FLM_GIT_REF=""
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --git-state|-g)
-            USE_GIT_STATE=true
-            shift
+        --git-ref|-r)
+            FLM_GIT_REF="$2"
+            shift 2
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--git-state|-g]"
+            echo "Usage: $0 [--git-ref <ref>|-r <ref>]"
             exit 1
             ;;
     esac
 done
 
-# Get FastFlowLM version from GitHub API (with fallback) or git state
-if [ "$USE_GIT_STATE" = true ]; then
-    # Use current git commit hash as the tag
-    FLM_VERSION=$(git rev-parse --short HEAD)
-    echo "Using git commit as version: ${FLM_VERSION}"
+# Get FastFlowLM version from GitHub API (with fallback) or specified git ref
+if [ -n "$FLM_GIT_REF" ]; then
+    # Use the specified git reference (commit hash, tag, or branch)
+    FLM_VERSION="$FLM_GIT_REF"
+    echo "Using specified git reference: ${FLM_VERSION}"
 else
     FLM_VERSION=$(curl -s https://api.github.com/repos/FastFlowLM/FastFlowLM/releases/latest 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4)
     FLM_VERSION=${FLM_VERSION:-v0.9.34}  # fallback if curl fails
