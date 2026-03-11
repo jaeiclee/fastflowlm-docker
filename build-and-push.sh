@@ -19,9 +19,19 @@ done
 
 # Get FastFlowLM version from GitHub API (with fallback) or specified git ref
 if [ -n "$FLM_GIT_REF" ]; then
-    # Use the specified git reference (commit hash, tag, or branch)
-    FLM_VERSION="$FLM_GIT_REF"
-    echo "Using specified git reference: ${FLM_VERSION}"
+    # Check if the ref is a branch by looking it up with git ls-remote
+    REF_TYPE=$(git ls-remote --heads https://github.com/FastFlowLM/FastFlowLM.git refs/heads/${FLM_GIT_REF} 2>/dev/null | head -1)
+    
+    if [ -n "$REF_TYPE" ]; then
+        # It's a branch - resolve to commit hash and use that as the tag
+        COMMIT_HASH=$(echo "$REF_TYPE" | cut -f1)
+        FLM_VERSION="$COMMIT_HASH"
+        echo "Branch detected: ${FLM_GIT_REF} -> Commit: ${FLM_VERSION}"
+    else
+        # It's a tag or commit hash - use as-is
+        FLM_VERSION="$FLM_GIT_REF"
+        echo "Using specified git reference: ${FLM_VERSION}"
+    fi
 else
     FLM_VERSION=$(curl -s https://api.github.com/repos/FastFlowLM/FastFlowLM/releases/latest 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4)
     FLM_VERSION=${FLM_VERSION:-v0.9.34}  # fallback if curl fails
